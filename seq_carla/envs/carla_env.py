@@ -56,6 +56,11 @@ class CarlaEnv(gym.Env):
     else:
       self.change_weather = False
 
+    if 'seq_length' in params.keys():
+      self.seq_length = params['seq_length']
+    else:
+      self.seq_length = 1
+    
 
     # Destination
     if params['task_mode'] == 'roundabout':
@@ -75,16 +80,16 @@ class CarlaEnv(gym.Env):
       params['continuous_steer_range'][0]]), np.array([params['continuous_accel_range'][1],
       params['continuous_steer_range'][1]]), dtype=np.float32)  # acc, steer
     observation_space_dict = {
-      'camera': spaces.Box(low=0, high=255, shape=(self.obs_size, self.obs_size, 3), dtype=np.uint8),
-      'lidar': spaces.Box(low=0, high=255, shape=(self.obs_size, self.obs_size, 3), dtype=np.uint8),
-      'birdeye': spaces.Box(low=0, high=255, shape=(self.obs_size, self.obs_size, 3), dtype=np.uint8),
+      'camera': spaces.Box(low=0, high=255, shape=(self.seq_length, self.obs_size, self.obs_size, 3), dtype=np.uint8),
+      'lidar': spaces.Box(low=0, high=255, shape=(self.seq_length, self.obs_size, self.obs_size, 3), dtype=np.uint8),
+      'birdeye': spaces.Box(low=0, high=255, shape=(self.seq_length, self.obs_size, self.obs_size, 3), dtype=np.uint8),
       'state': spaces.Box(np.array([-2, -1, -5, 0]), np.array([2, 1, 30, 1]), dtype=np.float32)
       }
     if self.pixor:
       observation_space_dict.update({
-        'roadmap': spaces.Box(low=0, high=255, shape=(self.obs_size, self.obs_size, 3), dtype=np.uint8),
-        'vh_clas': spaces.Box(low=0, high=1, shape=(self.pixor_size, self.pixor_size, 1), dtype=np.float32),
-        'vh_regr': spaces.Box(low=-5, high=5, shape=(self.pixor_size, self.pixor_size, 6), dtype=np.float32),
+        'roadmap': spaces.Box(low=0, high=255, shape=(self.seq_length, self.obs_size, self.obs_size, 3), dtype=np.uint8),
+        'vh_clas': spaces.Box(low=0, high=1, shape=(self.seq_length, self.pixor_size, self.pixor_size, 1), dtype=np.float32),
+        'vh_regr': spaces.Box(low=-5, high=5, shape=(self.seq_length, self.pixor_size, self.pixor_size, 6), dtype=np.float32),
         'pixor_state': spaces.Box(np.array([-1000, -1000, -1, -1, -5]), np.array([1000, 1000, 1, 1, 20]), dtype=np.float32)
         })
     self.observation_space = spaces.Dict(observation_space_dict)
@@ -269,6 +274,13 @@ class CarlaEnv(gym.Env):
 
     # Set ego information for render
     self.birdeye_render.set_hero(self.ego, self.ego.id)
+
+    self.cur_obs = {
+      'camera':np.zeros((self.seq_length, 64, 64, 3), dtype=np.uint8),
+      'lidar':np.zeros((self.seq_length, 64, 64, 3), dtype=np.uint8),
+      'birdeye':np.zeros((self.seq_length, 64, 64, 3), dtype=np.uint8),
+      # 'state': state,
+    }
 
     return self._get_obs()
   
@@ -614,8 +626,18 @@ class CarlaEnv(gym.Env):
         'vh_regr':vh_regr.astype(np.float32),
         'pixor_state': pixor_state,
       })
-
-    return obs
+    self.cur_obs['camera'] = np.concatenate((self.cur_obs['camera'][1:], np.array([obs['camera']])), axis=0)
+    self.cur_obs['lidar'] = np.concatenate((self.cur_obs['lidar'][1:], np.array([obs['lidar']])), axis=0)
+    self.cur_obs['birdeye'] = np.concatenate((self.cur_obs['birdeye'][1:], np.array([obs['birdeye']])), axis=0)
+    self.cur_obs['state'] = obs['state']
+    if self.pixor:
+      self.cur_obs.update({
+        'roadmap':roadmap.astype(np.uint8),
+        'vh_clas':np.expand_dims(vh_clas, -1).astype(np.float32),
+        'vh_regr':vh_regr.astype(np.float32),
+        'pixor_state': pixor_state,
+      })
+    return self.cur_obs
 
   def _get_reward(self):
     """Calculate the step reward."""

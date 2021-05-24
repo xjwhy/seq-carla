@@ -112,6 +112,7 @@ def load_carla_env(
     'display_route': display_route,  # whether to render the desired route
     'pixor_size': pixor_size,  # size of the pixor labels
     'pixor': pixor,  # whether to output PIXOR observation
+    'seq_length':10
   }
 
   gym_spec = gym.spec(env_name)

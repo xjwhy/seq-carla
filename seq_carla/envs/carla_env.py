@@ -83,8 +83,15 @@ class CarlaEnv(gym.Env):
       'camera': spaces.Box(low=0, high=255, shape=(self.seq_length, self.obs_size, self.obs_size, 3), dtype=np.uint8),
       'lidar': spaces.Box(low=0, high=255, shape=(self.seq_length, self.obs_size, self.obs_size, 3), dtype=np.uint8),
       'birdeye': spaces.Box(low=0, high=255, shape=(self.seq_length, self.obs_size, self.obs_size, 3), dtype=np.uint8),
-      'state': spaces.Box(np.array([-2, -1, -5, 0]), np.array([2, 1, 30, 1]), dtype=np.float32)
+      'state': spaces.Box(np.array([-2, -1, -5, 0]), np.array([2, 1, 30, 1]), dtype=np.float32),
+      'actions':np.zeros((self.seq_length-1,self.action_space.shape[0]))
       }
+    if self.discrete:
+      observation_space_dict['actions'] = spaces.Discrete(self.n_acc*self.n_steer)
+    else:
+      observation_space_dict['actions'] = spaces.Box(np.array([[params['continuous_accel_range'][0], 
+      params['continuous_steer_range'][0]] for _ in range(self.seq_length-1)]), np.array([[params['continuous_accel_range'][1],
+      params['continuous_steer_range'][1]] for _ in range(self.seq_length-1)]), dtype=np.float32)
     if self.pixor:
       observation_space_dict.update({
         'roadmap': spaces.Box(low=0, high=255, shape=(self.seq_length, self.obs_size, self.obs_size, 3), dtype=np.uint8),
@@ -279,12 +286,14 @@ class CarlaEnv(gym.Env):
       'camera':np.zeros((self.seq_length, 64, 64, 3), dtype=np.uint8),
       'lidar':np.zeros((self.seq_length, 64, 64, 3), dtype=np.uint8),
       'birdeye':np.zeros((self.seq_length, 64, 64, 3), dtype=np.uint8),
+      'actions':np.zeros((self.seq_length-1,self.action_space.shape[0]))
       # 'state': state,
     }
 
     return self._get_obs()
   
   def step(self, action):
+    self.cur_obs['actions'] = np.concatenate((self.cur_obs['actions'][1:], np.array([action])), axis=0)
     # Calculate acceleration and steering
     if self.discrete:
       acc = self.discrete_act[0][action//self.n_steer]
@@ -637,6 +646,7 @@ class CarlaEnv(gym.Env):
         'vh_regr':vh_regr.astype(np.float32),
         'pixor_state': pixor_state,
       })
+    #s:s_t, s_{t+1}, ..., s_{t+L}, 'actions':a_t, a_{t+1}, ..., a_{t+L-1}
     return self.cur_obs
 
   def _get_reward(self):
